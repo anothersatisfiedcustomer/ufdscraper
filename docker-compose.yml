@@ -1,0 +1,8 @@
+services:
+  ufdscraper:
+    build: .
+    volumes:
+      - "./output:/app/output"
+    environment:
+      - USER=${USER}
+      - PASSWORD=${PASSWORD}

@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Daily Power Consumption</title>
+    <style>
+        #drop-area {
+            border: 2px dashed #ccc;
+            border-radius: 20px;
+            width: 80%;
+            font-family: sans-serif;
+            margin: 100px auto;
+            padding: 20px;
+        }
+
+        #drop-area.highlight {
+            border-color: purple;
+        }
+
+        p {
+            margin-top: 0;
+        }
+
+        .my-form {
+            margin-bottom: 10px;
+        }
+
+        .button {
+            display: inline-block;
+            padding: 10px;
+            background: #ccc;
+            cursor: pointer;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+
+        .button:hover {
+            background: #ddd;
+        }
+
+        #fileElem {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<div id="drop-area">
+    <div>
+        <canvas id="myChart"></canvas>
+        <button id="downloadCSV" style="display: none">Descargar CSV</button>
+    </div>
+    <div>
+        <canvas id="myChart24"></canvas>
+        <button id="downloadCSV24" style="display: none">Descargar CSV</button>
+    </div>
+    <form class="my-form">
+        <p>Cargar multiples ficheros json usando el diálogo de selección de ficheros o arrastrandolos dentro de la
+            región delimitada</p>
+        <p>ZOOM: CTRL + rueda o click + arrastre sobre el rango a mostrar</p>
+        <p>DESPLAZAMIENTO: SHIFT + click + arrastre izquierda o derecha</p>
+        <input type="file" id="fileElem" multiple accept="application/json" onchange="handleFiles(this.files)">
+        <label class="button" for="fileElem">Seleccionar ficheros json</label>
+    </form>
+</div>
+<script>
+    let myChart = null;
+    let myChart24 = null;
+    let chart = {
+        "type": "bar",
+        "data": {
+            "datasets": [
+                {
+                    "label": "Consumo Diario en KWh",
+                    "data": [],
+                    "backgroundColor": "rgba(54, 162, 235, 1.0)",
+                    "fill": true,
+                    "spanGaps": true,
+                    "lineTension": 1.0,
+                    "pointRadius": 3,
+                    "pointHoverRadius": 3,
+                    "pointStyle": "circle",
+                    "borderDash": [
+                        0,
+                        0
+                    ],
+                    "barPercentage": 1.0,
+                    "categoryPercentage": 1.0,
+                    "type": "bar",
+                    "borderColor": "rgba(54, 162, 235, 1.0)",
+                    "borderWidth": 3,
+                    "hidden": false
+                }
+            ],
+            "labels": []
+        },
+        "options": {
+            "title": {
+                "display": false,
+                "position": "top",
+                "fontSize": 12,
+                "fontFamily": "sans-serif",
+                "fontColor": "#666666",
+                "fontStyle": "bold",
+                "padding": 10,
+                "lineHeight": 1.2,
+                "text": "Chart title"
+            },
+            "layout": {
+                "left": 0,
+                "right": 0,
+                "top": 0,
+                "bottom": 0
+            },
+            "legend": {
+                "display": false,
+                "position": "top",
+                "align": "center",
+                "fullWidth": true,
+                "reverse": false,
+                "labels": {
+                    "fontSize": 12,
+                    "fontFamily": "sans-serif",
+                    "fontColor": "#666666",
+                    "fontStyle": "normal",
+                    "padding": 10
+                }
+            },
+            "scales": {
+                "xAxes": [
+                    {
+                        "id": "X1",
+                        "type": "linear",
+                        "ticks": {
+                            "beginAtZero": true,
+                            "display": true,
+                            "fontSize": 12,
+                            "fontFamily": "sans-serif",
+                            "fontColor": "#666666",
+                            "fontStyle": "normal",
+                            "padding": 0,
+                            "stepSize": null,
+                            "minRotation": 0,
+                            "maxRotation": 50,
+                            "mirror": false,
+                            "reverse": false
+                        },
+                        "display": true,
+                        "position": "bottom",
+                        "stacked": false,
+                        "offset": true,
+                        "distribution": "linear",
+                        "gridLines": {
+                            "display": true,
+                            "color": "rgba(0, 0, 0, 0.1)",
+                            "borderDash": [
+                                0,
+                                0
+                            ],
+                            "lineWidth": 1,
+                            "drawBorder": true,
+                            "drawOnChartArea": true,
+                            "drawTicks": true,
+                            "tickMarkLength": 10,
+                            "zeroLineWidth": 1,
+                            "zeroLineColor": "rgba(0, 0, 0, 0.25)",
+                            "zeroLineBorderDash": [
+                                0,
+                                0
+                            ]
+                        },
+                        "angleLines": {
+                            "display": true,
+                            "color": "rgba(0, 0, 0, 0.1)",
+                            "borderDash": [
+                                0,
+                                0
+                            ],
+                            "lineWidth": 1
+                        },
+                        "pointLabels": {
+                            "display": true,
+                            "fontColor": "#666",
+                            "fontSize": 10,
+                            "fontStyle": "normal"
+                        },
+                        "scaleLabel": {
+                            "display": false,
+                            "labelString": "Axis label",
+                            "lineHeight": 1.2,
+                            "fontColor": "#666666",
+                            "fontFamily": "sans-serif",
+                            "fontSize": 12,
+                            "fontStyle": "normal",
+                            "padding": 4
+                        }
+                    }
+                ],
+                "yAxes": [
+                    {
+                        "id": "Y1",
+                        "ticks": {
+                            "beginAtZero": true,
+                            "display": true,
+                            "fontSize": 12,
+                            "fontFamily": "sans-serif",
+                            "fontColor": "#666666",
+                            "fontStyle": "normal",
+                            "padding": 0,
+                            "stepSize": null,
+                            "minRotation": 0,
+                            "maxRotation": 50,
+                            "mirror": false,
+                            "reverse": false
+                        },
+                        "display": true,
+                        "position": "left",
+                        "type": "linear",
+                        "stacked": false,
+                        "offset": true,
+                        "distribution": "linear",
+                        "gridLines": {
+                            "display": true,
+                            "color": "rgba(0, 0, 0, 0.1)",
+                            "borderDash": [
+                                0,
+                                0
+                            ],
+                            "lineWidth": 1,
+                            "drawBorder": true,
+                            "drawOnChartArea": true,
+                            "drawTicks": true,
+                            "tickMarkLength": 10,
+                            "zeroLineWidth": 1,
+                            "zeroLineColor": "rgba(0, 0, 0, 0.25)",
+                            "zeroLineBorderDash": [
+                                0,
+                                0
+                            ]
+                        },
+                        "angleLines": {
+                            "display": true,
+                            "color": "rgba(0, 0, 0, 0.1)",
+                            "borderDash": [
+                                0,
+                                0
+                            ],
+                            "lineWidth": 1
+                        },
+                        "pointLabels": {
+                            "display": true,
+                            "fontColor": "#666",
+                            "fontSize": 10,
+                            "fontStyle": "normal"
+                        },
+                        "scaleLabel": {
+                            "display": true,
+                            "labelString": "KWh",
+                            "lineHeight": 1.2,
+                            "fontColor": "#666666",
+                            "fontFamily": "sans-serif",
+                            "fontSize": 12,
+                            "fontStyle": "normal",
+                            "padding": 4
+                        }
+                    }
+                ]
+            },
+            "plugins": {
+                "datalabels": {
+                    "display": false,
+                    "align": "center",
+                    "anchor": "center",
+                    "backgroundColor": "#eee",
+                    "borderColor": "#ddd",
+                    "borderRadius": 6,
+                    "borderWidth": 1,
+                    "padding": 4,
+                    "color": "#666666",
+                    "font": {
+                        "family": "sans-serif",
+                        "size": 10,
+                        "style": "normal"
+                    }
+                },
+                "datalabelsZAxis": {
+                    "enabled": false
+                },
+                "zoom": {
+                    "pan": {
+                        "enabled": true,
+                        "modifierKey": "shift",
+                        "mode": "x",
+                        "scaleMode": "x"
+                    },
+                    "limits": {
+                        "x": {"min": 1, "max": "original"}
+                    },
+                    "zoom": {
+                        "wheel": {
+                            "enabled": true,
+                            "modifierKey": "ctrl"
+                        },
+                        "drag": {
+                            "enabled": true
+                        },
+                        "pinch": {
+                            "enabled": true
+                        },
+                        "mode": "x",
+                        "scaleMode": "x"
+                    }
+                },
+                "googleSheets": {},
+                "airtable": {},
+                "tickFormat": ""
+            },
+            "cutoutPercentage": 100,
+            "rotation": -1.5707963267948966,
+            "circumference": 6.283185307179586,
+            "startAngle": -1.5707963267948966
+        }
+    };
+    let chart24 = {
+        "type": "bar",
+        "data": {
+            "datasets": [
+                {
+                    "label": "Consumo Por Dia y Hora en KWh",
+                    "data": [],
+                    "backgroundColor": "rgba(54, 162, 235, 1.0)",
+                    "fill": true,
+                    "spanGaps": true,
+                    "lineTension": 1.0,
+                    "pointRadius": 3,
+                    "pointHoverRadius": 3,
+                    "pointStyle": "circle",
+                    "borderDash": [
+                        0,
+                        0
+                    ],
+                    "barPercentage": 1.0,
+                    "categoryPercentage": 1.0,
+                    "type": "bar",
+                    "borderColor": "rgba(54, 162, 235, 1.0)",
+                    "borderWidth": 3,
+                    "hidden": false
+                }
+            ],
+            "labels": []
+        },
+        "options": {
+            "title": {
+                "display": false,
+                "position": "top",
+                "fontSize": 12,
+                "fontFamily": "sans-serif",
+                "fontColor": "#666666",
+                "fontStyle": "bold",
+                "padding": 10,
+                "lineHeight": 1.2,
+                "text": "Chart title"
+            },
+            "layout": {
+                "left": 0,
+                "right": 0,
+                "top": 0,
+                "bottom": 0
+            },
+            "legend": {
+                "display": false,
+                "position": "top",
+                "align": "center",
+                "fullWidth": true,
+                "reverse": false,
+                "labels": {
+                    "fontSize": 12,
+                    "fontFamily": "sans-serif",
+                    "fontColor": "#666666",
+                    "fontStyle": "normal",
+                    "padding": 10
+                }
+            },
+            "scales": {
+                "xAxes": [
+                    {
+                        "id": "X1",
+                        "type": "linear",
+                        "ticks": {
+                            "beginAtZero": true,
+                            "display": true,
+                            "fontSize": 12,
+                            "fontFamily": "sans-serif",
+                            "fontColor": "#666666",
+                            "fontStyle": "normal",
+                            "padding": 0,
+                            "stepSize": null,
+                            "minRotation": 0,
+                            "maxRotation": 50,
+                            "mirror": false,
+                            "reverse": false
+                        },
+                        "display": true,
+                        "position": "bottom",
+                        "stacked": false,
+                        "offset": true,
+                        "distribution": "linear",
+                        "gridLines": {
+                            "display": true,
+                            "color": "rgba(0, 0, 0, 0.1)",
+                            "borderDash": [
+                                0,
+                                0
+                            ],
+                            "lineWidth": 1,
+                            "drawBorder": true,
+                            "drawOnChartArea": true,
+                            "drawTicks": true,
+                            "tickMarkLength": 10,
+                            "zeroLineWidth": 1,
+                            "zeroLineColor": "rgba(0, 0, 0, 0.25)",
+                            "zeroLineBorderDash": [
+                                0,
+                                0
+                            ]
+                        },
+                        "angleLines": {
+                            "display": true,
+                            "color": "rgba(0, 0, 0, 0.1)",
+                            "borderDash": [
+                                0,
+                                0
+                            ],
+                            "lineWidth": 1
+                        },
+                        "pointLabels": {
+                            "display": true,
+                            "fontColor": "#666",
+                            "fontSize": 10,
+                            "fontStyle": "normal"
+                        },
+                        "scaleLabel": {
+                            "display": false,
+                            "labelString": "Axis label",
+                            "lineHeight": 1.2,
+                            "fontColor": "#666666",
+                            "fontFamily": "sans-serif",
+                            "fontSize": 12,
+                            "fontStyle": "normal",
+                            "padding": 4
+                        }
+                    }
+                ],
+                "yAxes": [
+                    {
+                        "id": "Y1",
+                        "ticks": {
+                            "beginAtZero": true,
+                            "display": true,
+                            "fontSize": 12,
+                            "fontFamily": "sans-serif",
+                            "fontColor": "#666666",
+                            "fontStyle": "normal",
+                            "padding": 0,
+                            "stepSize": null,
+                            "minRotation": 0,
+                            "maxRotation": 50,
+                            "mirror": false,
+                            "reverse": false
+                        },
+                        "display": true,
+                        "position": "left",
+                        "type": "linear",
+                        "stacked": false,
+                        "offset": true,
+                        "distribution": "linear",
+                        "gridLines": {
+                            "display": true,
+                            "color": "rgba(0, 0, 0, 0.1)",
+                            "borderDash": [
+                                0,
+                                0
+                            ],
+                            "lineWidth": 1,
+                            "drawBorder": true,
+                            "drawOnChartArea": true,
+                            "drawTicks": true,
+                            "tickMarkLength": 10,
+                            "zeroLineWidth": 1,
+                            "zeroLineColor": "rgba(0, 0, 0, 0.25)",
+                            "zeroLineBorderDash": [
+                                0,
+                                0
+                            ]
+                        },
+                        "angleLines": {
+                            "display": true,
+                            "color": "rgba(0, 0, 0, 0.1)",
+                            "borderDash": [
+                                0,
+                                0
+                            ],
+                            "lineWidth": 1
+                        },
+                        "pointLabels": {
+                            "display": true,
+                            "fontColor": "#666",
+                            "fontSize": 10,
+                            "fontStyle": "normal"
+                        },
+                        "scaleLabel": {
+                            "display": true,
+                            "labelString": "KWh",
+                            "lineHeight": 1.2,
+                            "fontColor": "#666666",
+                            "fontFamily": "sans-serif",
+                            "fontSize": 12,
+                            "fontStyle": "normal",
+                            "padding": 4
+                        }
+                    }
+                ]
+            },
+            "plugins": {
+                "datalabels": {
+                    "display": false,
+                    "align": "center",
+                    "anchor": "center",
+                    "backgroundColor": "#eee",
+                    "borderColor": "#ddd",
+                    "borderRadius": 6,
+                    "borderWidth": 1,
+                    "padding": 4,
+                    "color": "#666666",
+                    "font": {
+                        "family": "sans-serif",
+                        "size": 10,
+                        "style": "normal"
+                    }
+                },
+                "zoom": {
+                    "pan": {
+                        "enabled": true,
+                        "modifierKey": "shift",
+                        "mode": "x",
+                        "scaleMode": "x"
+                    },
+                    "limits": {
+                        "x": {"min": 1, "max": "original"}
+                    },
+                    "zoom": {
+                        "wheel": {
+                            "enabled": true,
+                            "modifierKey": "ctrl"
+                        },
+                        "drag": {
+                            "enabled": true
+                        },
+                        "pinch": {
+                            "enabled": true
+                        },
+                        "mode": "x",
+                        "scaleMode": "x"
+                    }
+                }
+            }
+        }
+    };
+
+    // ************************ Drag and drop ***************** //
+    let dropArea = document.getElementById("drop-area");
+
+    // Prevent default drag behaviors
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, preventDefaults, false)
+        document.body.addEventListener(eventName, preventDefaults, false)
+    });
+
+    // Highlight drop area when item is dragged over it
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropArea.addEventListener(eventName, highlight, false)
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, unhighlight, false);
+    })
+
+    // Handle dropped files
+    dropArea.addEventListener('drop', handleDrop, false);
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    function highlight() {
+        dropArea.classList.add('highlight');
+    }
+
+    function unhighlight() {
+        dropArea.classList.remove('highlight');
+    }
+
+    function handleDrop(e) {
+        let dt = e.dataTransfer;
+        let files = dt.files;
+
+        handleFiles(files);
+    }
+
+    function handleFiles(files) {
+        files = [...files];
+        files.forEach(loadFile);
+    }
+
+    function onReaderLoad(event) {
+        // console.log(event.target.result);
+        let data = JSON.parse(event.target.result);
+        // console.log(data);
+        // gather current results
+        let orderedResultValues = [];
+        let orderedResultValues24 = [];
+        let orderedResultLabels = [];
+        let orderedResultLabels24 = [];
+        // sum all KWh for each entry
+        for (let i=0; i<data.length; i++) {
+            const label_parts = data[i]['items'][0]['periodStartDate'].split('/');
+            const label = '' + label_parts[2] + label_parts[1] + label_parts[0];
+            orderedResultLabels.push(label);
+            orderedResultValues.push(data[i]['items'][0]['consumptions']['items'].map(
+                (x) => parseFloat(x['consumptionValue'].replace(',', '.'))).reduce((total, x) => total + x, 0));
+            let consumptions = data[i]['items'][0]['consumptions']['items'].map(
+                (x) => parseFloat(x['consumptionValue'].replace(',', '.')));
+            for (let i = 0; i < consumptions.length; i++) {
+                orderedResultLabels24.push(label + ' ' + i.toLocaleString('es-ES', {
+                    minimumIntegerDigits: 2,
+                    useGrouping: false
+                }))
+                orderedResultValues24.push(consumptions[i]);
+            }
+        }
+        // add entry label and value to chart
+        if (chart['data']['labels'].length === 0) {
+            chart['data']['labels'] = orderedResultLabels;
+            chart['data']['datasets'][0]['data'] = orderedResultValues;
+        } else {
+            // there must be a more elegant way of doing this with map/reduce...
+            let previousOrderedResultLabels = chart['data']['labels'];
+            let previousOrderedResultValues = chart['data']['datasets'][0]['data'];
+            chart['data']['labels'] = [];
+            chart['data']['datasets'][0]['data'] = [];
+            for (let i = 0, j = 0, k = 0; i < previousOrderedResultLabels.length || j < orderedResultLabels.length;){
+                if (previousOrderedResultLabels[i] < orderedResultLabels[j]) {
+                    chart['data']['labels'][k] = previousOrderedResultLabels[i];
+                    chart['data']['datasets'][0]['data'][k] = previousOrderedResultValues[i];
+                    i++;
+                } else {
+                    chart['data']['labels'][k] = orderedResultLabels[j];
+                    chart['data']['datasets'][0]['data'][k] = orderedResultValues[j];
+                    j++;
+                    if (previousOrderedResultLabels[i] === orderedResultLabels[j]) {
+                        i++;
+                    }
+                }
+                k++;
+            }
+        }
+        if (chart24['data']['labels'].length === 0) {
+            chart24['data']['labels'] = orderedResultLabels24;
+            chart24['data']['datasets'][0]['data'] = orderedResultValues24;
+        } else {
+            // there must be a more elegant way of doing this with map/reduce...
+            let previousOrderedResultLabels24 = chart24['data']['labels'];
+            let previousOrderedResultValues24 = chart24['data']['datasets'][0]['data'];
+            chart24['data']['labels'] = [];
+            chart24['data']['datasets'][0]['data'] = [];
+            for (let i = 0, j = 0, k = 0; i < previousOrderedResultLabels24.length || j < orderedResultLabels24.length;){
+                if (previousOrderedResultLabels24[i] < orderedResultLabels24[j]) {
+                    chart24['data']['labels'][k] = previousOrderedResultLabels24[i];
+                    chart24['data']['datasets'][0]['data'][k] = previousOrderedResultValues24[i];
+                    i++;
+                } else {
+                    chart24['data']['labels'][k] = orderedResultLabels24[j];
+                    chart24['data']['datasets'][0]['data'][k] = orderedResultValues24[j];
+                    j++;
+                    if (previousOrderedResultLabels24[i] === orderedResultLabels24[j]) {
+                        i++;
+                    }
+                }
+                k++;
+            }
+        }
+        const ctx = document.getElementById('myChart');
+        const ctx24 = document.getElementById('myChart24');
+        if (myChart) {
+            myChart.clear();
+            myChart.destroy();
+        }
+        if (myChart24) {
+            myChart24.clear();
+            myChart24.destroy();
+        }
+        myChart = new Chart(ctx, chart);
+        document.getElementById("downloadCSV").style.display = "block";
+        myChart24 = new Chart(ctx24, chart24);
+        document.getElementById("downloadCSV24").style.display = "block";
+   }
+
+    function loadFile(file) {
+        let reader = new FileReader();
+        reader.onload = onReaderLoad;
+        reader.readAsText(file);
+    }
+
+
+    document.getElementById("downloadCSV").addEventListener("click", function () {
+        downloadCSV({
+            filename: "chart-data.csv",
+            chart: chart
+        })
+    });
+
+
+    document.getElementById("downloadCSV24").addEventListener("click", function () {
+        downloadCSV({
+            filename: "chart-data24.csv",
+            chart: chart24
+        })
+    });
+
+    function convertChartDataToCSV(args) {
+        let result, columnDelimiter, lineDelimiter, labels, data;
+
+        data = args.data.data || null;
+        if (data == null || !data.length) {
+            return null;
+        }
+
+        labels = args.labels || null;
+        if (labels == null || !labels.length) {
+            return null;
+        }
+
+        columnDelimiter = args.columnDelimiter || ',';
+        lineDelimiter = args.lineDelimiter || '\n';
+
+        result = '';
+        for (let i=0; i<labels.length; i++){
+            result += labels[i] + columnDelimiter + data[i] + lineDelimiter;
+        }
+
+        return result;
+    }
+
+    function downloadCSV(args) {
+        let data, filename, link;
+        let csv = "";
+        for (let i = 0; i < args.chart.data.datasets.length; i++) {
+            csv += convertChartDataToCSV({
+                data: args.chart.data.datasets[i],
+                labels: args.chart.data.labels
+            });
+        }
+        if (csv == null) return;
+        // console.log(csv);
+
+        filename = args.filename || 'chart-data.csv';
+        if (!csv.match(/^data:text\/csv/i)) {
+            csv = 'data:text/csv;charset=utf-8,' + csv;
+        }
+        data = encodeURI(csv);
+        link = document.createElement('a');
+        link.setAttribute('href', data);
+        link.setAttribute('download', filename);
+        document.body.appendChild(link); // Required for FF
+        link.click();
+        document.body.removeChild(link);
+    }
+
+</script>
+</body>
+</html>
