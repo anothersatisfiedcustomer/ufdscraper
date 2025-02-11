@@ -7,7 +7,6 @@ import random
 import ssl
 import string
 import sys
-from collections import OrderedDict
 from json import JSONDecodeError
 from time import sleep
 from urllib.error import HTTPError, URLError
@@ -48,18 +47,8 @@ class UFDScraper:
     _DEFAULT_MAX_S_BETWEEN_API_CALLS = 4
     _DEFAULT_TOKEN_VALIDITY_IN_S = 60
 
-    def __init__(self, config=None):
-        self._logger = logging.getLogger('ufdscraper')
-        if not self._logger.hasHandlers():
-            formatter = logging.Formatter(fmt='{asctime}.{msecs:0<3.0f} {name} {threadName} {levelname}: {message}',
-                                          style='{',
-                                          datefmt='%Y-%m-%d %H:%M:%S')
-            formatter.default_msec_format = '%s.%03d'
-            screen_handler = logging.StreamHandler(stream=sys.stderr)
-            screen_handler.setFormatter(formatter)
-            screen_handler.setLevel(logging.INFO)
-            self._logger.setLevel(logging.INFO)
-            self._logger.addHandler(screen_handler)
+    def __init__(self, logger=None, config=None):
+        self._logger = logger or logging.getLogger(__name__)
         if not config:
             config = {}
         self._user = config.get('ufd_account_login', None)
@@ -181,6 +170,7 @@ class UFDScraper:
                   '%7Cgranularity::H%7Cunit::K%7Cgenerator::0' + \
                   '%7CisDelegate::N%7CisSelfConsumption::0%7CmeasurementSystem::O'
             response_content = self._ufd_api_call('GET', url)
+            response_content['tags'] = { 'cups': contract }
             return response_content
         except Exception as ex:
             raise ConsumptionError(ex)
@@ -219,25 +209,33 @@ class UFDScraper:
         self._logger.info('Sleeping ' + str(sleep_seconds) + 's before next request...')
         sleep(sleep_seconds)
 
-    def scrap_ufd(self, ini_date, end_date):
-        output_list = []
+    def scrap_ufd(self, ini_date, end_date, output_file_name = None):
         try:
             customer_nif = self._user
             contract_id = self._get_supply_point_cups(nif=customer_nif)
             cur_date = end_date
             days = (end_date - ini_date + datetime.timedelta(1)).days
             shift = datetime.timedelta(1)
-            for _ in range(days):
-                result = self._get_hourly_consumption_for_day(cur_date.strftime('%d/%m/%Y'),
-                                                              nif=customer_nif,
-                                                              contract=contract_id)
-                self._logger.info(result)
-                if result:
-                    output_list.append(result)
-                cur_date = cur_date - shift
+
+            if not output_file_name:
+                for _ in range(days):
+                    print(json.dumps(self._get_hourly_consumption_for_day(cur_date.strftime('%d/%m/%Y'),
+                                                                           nif=customer_nif,
+                                                                           contract=contract_id)))
+                    cur_date = cur_date - shift
+            else:
+                with open(output_file_name, 'w') as output_file:
+                    for _ in range(days):
+                        result = self._get_hourly_consumption_for_day(cur_date.strftime('%d/%m/%Y'),
+                                                                      nif=customer_nif,
+                                                                      contract=contract_id)
+                        self._logger.info(result)
+                        if result:
+                            json.dump(result, output_file)
+                            output_file.write('\n')
+                        cur_date = cur_date - shift
         except Exception as e:
             self._logger.error(e)
-        return output_list
 
 
 def main():
@@ -261,14 +259,24 @@ def main():
     config = {'ufd_account_login': os.environ.get('USER'),
               'ufd_account_password': os.environ.get('PASSWORD'),
               'api_server_ssl_cert_verify': False if args.no_ssl_verify else True}
-    us = UFDScraper(config)
-    output_list = us.scrap_ufd(datetime.datetime.strptime(start, '%Y%m%d'),
-                               datetime.datetime.strptime(end, '%Y%m%d'))
-    output_list.reverse()
-    print(json.dumps(output_list))
-    if args.dump_to_file:
-        with open(output_file_name, 'w') as output_file:
-            json.dump(output_list, output_file)
+
+    logger = logging.getLogger('ufdscraper')
+    if not logger.hasHandlers():
+        formatter = logging.Formatter(fmt='{asctime}.{msecs:0<3.0f} {name} {threadName} {levelname}: {message}',
+                                      style='{',
+                                      datefmt='%Y-%m-%d %H:%M:%S')
+        formatter.default_msec_format = '%s.%03d'
+        screen_handler = logging.StreamHandler(stream=sys.stderr)
+        screen_handler.setFormatter(formatter)
+        screen_handler.setLevel(logging.INFO)
+        logger.setLevel(logging.INFO)
+        logger.addHandler(screen_handler)
+    us = UFDScraper(logger, config)
+    us.scrap_ufd(
+        datetime.datetime.strptime(start, '%Y%m%d'),
+        datetime.datetime.strptime(end, '%Y%m%d'),
+        output_file_name if args.dump_to_file else None
+    )
 
 
 if __name__ == '__main__':

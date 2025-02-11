@@ -67,6 +67,10 @@
     </form>
 </div>
 <script>
+    let orderedResultValues = [];
+    let orderedResultValues24 = [];
+    let orderedResultLabels = [];
+    let orderedResultLabels24 = [];
     let myChart = null;
     let myChart24 = null;
     let chart = {
@@ -611,37 +615,53 @@
         handleFiles(files);
     }
 
-    function handleFiles(files) {
-        files = [...files];
-        files.forEach(loadFile);
+    function handleFiles(files_to_handle) {
+        onReaderStart();
+        files = [...files_to_handle];
+        completedCount = 0;
+        filesCount = files.length;
+        loadFile(files[0]);
     }
 
-    function onReaderLoad(event) {
-        // console.log(event.target.result);
-        let data = JSON.parse(event.target.result);
+    function onReaderLoad() {
+        let data;
+        try {
+            data = JSON.parse(current_line);
+        } catch (e) {
+            current_line = '';
+            console.log(`error parsing json ${e.message}`);
+            seek();
+            return;
+        }
+        current_line = '';
         // console.log(data);
         // gather current results
-        let orderedResultValues = [];
-        let orderedResultValues24 = [];
-        let orderedResultLabels = [];
-        let orderedResultLabels24 = [];
         // sum all KWh for each entry
-        for (let i=0; i<data.length; i++) {
-            const label_parts = data[i]['items'][0]['periodStartDate'].split('/');
-            const label = '' + label_parts[2] + label_parts[1] + label_parts[0];
-            orderedResultLabels.push(label);
-            orderedResultValues.push(data[i]['items'][0]['consumptions']['items'].map(
-                (x) => parseFloat(x['consumptionValue'].replace(',', '.'))).reduce((total, x) => total + x, 0));
-            let consumptions = data[i]['items'][0]['consumptions']['items'].map(
-                (x) => parseFloat(x['consumptionValue'].replace(',', '.')));
-            for (let i = 0; i < consumptions.length; i++) {
-                orderedResultLabels24.push(label + ' ' + i.toLocaleString('es-ES', {
-                    minimumIntegerDigits: 2,
-                    useGrouping: false
-                }))
-                orderedResultValues24.push(consumptions[i]);
-            }
+        const label_parts = data['items'][0]['periodStartDate'].split('/');
+        const label = '' + label_parts[2] + label_parts[1] + label_parts[0];
+        orderedResultLabels.push(label);
+        orderedResultValues.push(data['items'][0]['consumptions']['items'].map(
+            (x) => parseFloat(x['consumptionValue'].replace(',', '.'))).reduce((total, x) => total + x, 0));
+        let consumptions = data['items'][0]['consumptions']['items'].map(
+            (x) => parseFloat(x['consumptionValue'].replace(',', '.')));
+        for (let i = 0; i < consumptions.length; i++) {
+            orderedResultLabels24.push(label + ' ' + i.toLocaleString('es-ES', {
+                minimumIntegerDigits: 2,
+                useGrouping: false
+            }))
+            orderedResultValues24.push(consumptions[i]);
         }
+        seek();
+    }
+
+    function onReaderStart() {
+        orderedResultValues = [];
+        orderedResultValues24 = [];
+        orderedResultLabels = [];
+        orderedResultLabels24 = [];
+    }
+
+    function onReaderFinish() {
         // add entry label and value to chart
         if (chart['data']['labels'].length === 0) {
             chart['data']['labels'] = orderedResultLabels;
@@ -652,7 +672,7 @@
             let previousOrderedResultValues = chart['data']['datasets'][0]['data'];
             chart['data']['labels'] = [];
             chart['data']['datasets'][0]['data'] = [];
-            for (let i = 0, j = 0, k = 0; i < previousOrderedResultLabels.length || j < orderedResultLabels.length;){
+            for (let i = 0, j = 0, k = 0; i < previousOrderedResultLabels.length || j < orderedResultLabels.length;) {
                 if (previousOrderedResultLabels[i] < orderedResultLabels[j]) {
                     chart['data']['labels'][k] = previousOrderedResultLabels[i];
                     chart['data']['datasets'][0]['data'][k] = previousOrderedResultValues[i];
@@ -677,7 +697,7 @@
             let previousOrderedResultValues24 = chart24['data']['datasets'][0]['data'];
             chart24['data']['labels'] = [];
             chart24['data']['datasets'][0]['data'] = [];
-            for (let i = 0, j = 0, k = 0; i < previousOrderedResultLabels24.length || j < orderedResultLabels24.length;){
+            for (let i = 0, j = 0, k = 0; i < previousOrderedResultLabels24.length || j < orderedResultLabels24.length;) {
                 if (previousOrderedResultLabels24[i] < orderedResultLabels24[j]) {
                     chart24['data']['labels'][k] = previousOrderedResultLabels24[i];
                     chart24['data']['datasets'][0]['data'][k] = previousOrderedResultValues24[i];
@@ -707,12 +727,56 @@
         document.getElementById("downloadCSV").style.display = "block";
         myChart24 = new Chart(ctx24, chart24);
         document.getElementById("downloadCSV24").style.display = "block";
-   }
+    }
+
+    let files, reader, current_file, current_line = '', current_index = 0, filesCount = -1, completedCount = 0;
 
     function loadFile(file) {
-        let reader = new FileReader();
-        reader.onload = onReaderLoad;
-        reader.readAsText(file);
+        reader = new FileReader();
+        current_file = file;
+        reader.onload = makeTextFileLine;
+        seek();
+    }
+
+    function seek() {
+        if (current_index >= current_file.size) {
+            completedCount += 1;
+            console.log(`END: completed: ${completedCount} total: ${filesCount}`)
+            current_index = 0;
+            current_line = ''; // for good measure
+            if (completedCount === filesCount) {
+                onReaderFinish();
+            } else {
+                loadFile(files[completedCount])
+            }
+            return;
+        }
+        let chunk_size = Math.min(32768, current_file.size - current_index);
+        // console.log(`LOOP: completed: ${completedCount} total: ${filesCount}`)
+        // console.log(`LOOP: index: ${current_index} size: ${current_file.size} chunk: ${chunk_size}`)
+        let slice = current_file.slice(current_index, current_index + chunk_size);
+        current_index += chunk_size
+        reader.readAsArrayBuffer(slice);
+    }
+
+    function makeTextFileLine() {
+        let buffer = new Uint8Array(reader.result);
+        for (let i = 0; i < buffer.length; i++) {
+            if (buffer[i] === 10) {
+                current_line += new TextDecoder('utf-8').decode(buffer.slice(0, i + 1));
+                current_index = current_index - buffer.length + i + 1;
+                onReaderLoad();
+                return;
+            }
+        }
+        current_line += new TextDecoder('utf-8').decode(buffer.slice(0, buffer.length));
+        if (current_index >= current_file.size) {
+            console.log(`FULL BUFFER ADDED AT END: ${current_line}`);
+            onReaderLoad();
+        } else {
+            console.warn(`FULL BUFFER ADDED: ${current_line}. CONSIDER INCREASING BUFFER SIZE SO IT FITS AT LEAST 1 LINE`);
+            seek();
+        }
     }
 
 
@@ -748,7 +812,7 @@
         lineDelimiter = args.lineDelimiter || '\n';
 
         result = '';
-        for (let i=0; i<labels.length; i++){
+        for (let i = 0; i < labels.length; i++) {
             result += labels[i] + columnDelimiter + data[i] + lineDelimiter;
         }
 
@@ -764,8 +828,9 @@
                 labels: args.chart.data.labels
             });
         }
-        if (csv == null) return;
-        // console.log(csv);
+        if (!csv) {
+            return;
+        }
 
         filename = args.filename || 'chart-data.csv';
         if (!csv.match(/^data:text\/csv/i)) {

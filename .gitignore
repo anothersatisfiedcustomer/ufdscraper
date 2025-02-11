@@ -110,4 +110,9 @@ docs/*.html
 .idea
 *.pyc
 /output/*
+/archived_output/*
+/archived_output_test/*
+/output_refactored/*
+/archived_output_refactored/*
+/archived_output_test_refactored/*
 !/output/.gitkeep
