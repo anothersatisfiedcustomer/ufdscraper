@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Daily Power Consumption</title>
+    <title>UFD Consumo El&eacute;ctrico Diario</title>
     <style>
         #drop-area {
             border: 2px dashed #ccc;
@@ -73,8 +73,8 @@
     let orderedResultLabels24 = [];
     let myChart = null;
     let myChart24 = null;
-    let chart = {
-        "type": "bar",
+    let chartDefinition = {
+        "type": "customBar",
         "data": {
             "datasets": [
                 {
@@ -91,9 +91,9 @@
                         0,
                         0
                     ],
-                    "barPercentage": 1.0,
+                    "barPercentage": 0.95,
                     "categoryPercentage": 1.0,
-                    "type": "bar",
+                    "type": "customBar",
                     "borderColor": "rgba(54, 162, 235, 1.0)",
                     "borderWidth": 3,
                     "hidden": false
@@ -328,8 +328,8 @@
             "startAngle": -1.5707963267948966
         }
     };
-    let chart24 = {
-        "type": "bar",
+    let chart24Definition = {
+        "type": "customBar",
         "data": {
             "datasets": [
                 {
@@ -348,7 +348,7 @@
                     ],
                     "barPercentage": 1.0,
                     "categoryPercentage": 1.0,
-                    "type": "bar",
+                    "type": "customBar",
                     "borderColor": "rgba(54, 162, 235, 1.0)",
                     "borderWidth": 3,
                     "hidden": false
@@ -574,6 +574,37 @@
         }
     };
 
+    let error = '';
+
+    // ************************ Text Overlay ****************** //
+
+    class CustomBarController extends Chart.BarController {
+        draw() {
+            super.draw(arguments);
+
+            const width = this.chart.width,
+                height = this.chart.height,
+                ctx = this.chart.ctx;
+
+            const fontSize = (height / 114).toFixed(2);
+            ctx.font = fontSize + "em sans-serif";
+            ctx.fillStyle = "black";
+            ctx.textBaseline = "middle";
+
+            const text = (this.chart.data.datasets[0]['data'].slice(this.chart.scales.x.getMinMax().min, this.chart.scales.x.getMinMax().max + 1).reduce((total, x) => (total + x), 0)).toFixed(1) + ' KWh',
+                textX = Math.round((width - ctx.measureText(text).width) / 2),
+                textY = height / 2;
+
+            ctx.fillText(text, textX, textY);
+        }
+    }
+
+
+    CustomBarController.id = 'customBar';
+    CustomBarController.defaults = Chart.BarController.defaults;
+
+    Chart.register(CustomBarController);
+
     // ************************ Drag and drop ***************** //
     let dropArea = document.getElementById("drop-area");
 
@@ -616,11 +647,15 @@
     }
 
     function handleFiles(files_to_handle) {
-        onReaderStart();
-        files = [...files_to_handle];
-        completedCount = 0;
-        filesCount = files.length;
-        loadFile(files[0]);
+        try {
+            onReaderStart();
+            files = [...files_to_handle];
+            completedCount = 0;
+            filesCount = files.length;
+            loadFile(files[0]);
+        } catch (e) {
+            alert(e.message);
+        }
     }
 
     function onReaderLoad() {
@@ -629,7 +664,12 @@
             data = JSON.parse(current_line);
         } catch (e) {
             current_line = '';
-            console.log(`error parsing json ${e.message}`);
+            const msg = `Error parsing json ${e.message}`;
+            console.error(msg);
+            if (!error) {
+                error = msg;
+                alert(msg);
+            }
             seek();
             return;
         }
@@ -639,19 +679,54 @@
         // sum all KWh for each entry
         const label_parts = data['items'][0]['periodStartDate'].split('/');
         const label = '' + label_parts[2] + label_parts[1] + label_parts[0];
-        orderedResultLabels.push(label);
-        orderedResultValues.push(data['items'][0]['consumptions']['items'].map(
-            (x) => parseFloat(x['consumptionValue'].replace(',', '.'))).reduce((total, x) => total + x, 0));
-        let consumptions = data['items'][0]['consumptions']['items'].map(
+        const hourlyConsumptions = data['items'][0]['consumptions']['items'].map(
             (x) => parseFloat(x['consumptionValue'].replace(',', '.')));
-        for (let i = 0; i < consumptions.length; i++) {
-            orderedResultLabels24.push(label + ' ' + i.toLocaleString('es-ES', {
-                minimumIntegerDigits: 2,
-                useGrouping: false
-            }))
-            orderedResultValues24.push(consumptions[i]);
-        }
+        const dailyConsumptions = hourlyConsumptions.reduce((total, x) => total + x, 0);
+        addToOrderedValuesAndLabels(label, dailyConsumptions, hourlyConsumptions);
         seek();
+    }
+
+    function addToOrderedValuesAndLabels(label, daily_aggregations, hourly_aggregations) {
+        if (orderedResultLabels.length === 0 || label >= orderedResultLabels[orderedResultLabels.length - 1]) {
+            orderedResultLabels.push(label);
+            orderedResultValues.push(daily_aggregations);
+
+            for (let i = 0; i < hourly_aggregations.length; i++) {
+                orderedResultLabels24.push(label + ' ' + i.toLocaleString('es-ES', {
+                    minimumIntegerDigits: 2,
+                    useGrouping: false
+                }))
+                orderedResultValues24.push(hourly_aggregations[i]);
+            }
+        } else if (label <= orderedResultLabels[0]) {
+            orderedResultLabels.unshift(label);
+            orderedResultValues.unshift(daily_aggregations);
+
+            for (let i = 0; i < hourly_aggregations.length; i++) {
+                orderedResultLabels24.unshift(label + ' ' + i.toLocaleString('es-ES', {
+                    minimumIntegerDigits: 2,
+                    useGrouping: false
+                }))
+                orderedResultValues24.unshift(hourly_aggregations[i]);
+            }
+        } else {
+            console.warn(`Very inefficient processing of ${current_file.name}. Please use files with ordered entries and ranges that do not overlap.`);
+            for (let i = 0; i < orderedResultLabels.length; i++) {
+                if (orderedResultLabels[i] > label) {
+                    orderedResultLabels.splice(i, 0, label);
+                    orderedResultValues.splice(i, 0, daily_aggregations);
+
+                    for (let j = 0; j < hourly_aggregations.length; j++) {
+                        orderedResultLabels24.splice(i * 24 + j - 1, 0, label + ' ' + j.toLocaleString('es-ES', {
+                            minimumIntegerDigits: 2,
+                            useGrouping: false
+                        }))
+                        orderedResultValues24.splice(i * 24 + j - 1, 0, hourly_aggregations[j]);
+                    }
+                    break;
+                }
+            }
+        }
     }
 
     function onReaderStart() {
@@ -663,56 +738,10 @@
 
     function onReaderFinish() {
         // add entry label and value to chart
-        if (chart['data']['labels'].length === 0) {
-            chart['data']['labels'] = orderedResultLabels;
-            chart['data']['datasets'][0]['data'] = orderedResultValues;
-        } else {
-            // there must be a more elegant way of doing this with map/reduce...
-            let previousOrderedResultLabels = chart['data']['labels'];
-            let previousOrderedResultValues = chart['data']['datasets'][0]['data'];
-            chart['data']['labels'] = [];
-            chart['data']['datasets'][0]['data'] = [];
-            for (let i = 0, j = 0, k = 0; i < previousOrderedResultLabels.length || j < orderedResultLabels.length;) {
-                if (previousOrderedResultLabels[i] < orderedResultLabels[j]) {
-                    chart['data']['labels'][k] = previousOrderedResultLabels[i];
-                    chart['data']['datasets'][0]['data'][k] = previousOrderedResultValues[i];
-                    i++;
-                } else {
-                    chart['data']['labels'][k] = orderedResultLabels[j];
-                    chart['data']['datasets'][0]['data'][k] = orderedResultValues[j];
-                    j++;
-                    if (previousOrderedResultLabels[i] === orderedResultLabels[j]) {
-                        i++;
-                    }
-                }
-                k++;
-            }
-        }
-        if (chart24['data']['labels'].length === 0) {
-            chart24['data']['labels'] = orderedResultLabels24;
-            chart24['data']['datasets'][0]['data'] = orderedResultValues24;
-        } else {
-            // there must be a more elegant way of doing this with map/reduce...
-            let previousOrderedResultLabels24 = chart24['data']['labels'];
-            let previousOrderedResultValues24 = chart24['data']['datasets'][0]['data'];
-            chart24['data']['labels'] = [];
-            chart24['data']['datasets'][0]['data'] = [];
-            for (let i = 0, j = 0, k = 0; i < previousOrderedResultLabels24.length || j < orderedResultLabels24.length;) {
-                if (previousOrderedResultLabels24[i] < orderedResultLabels24[j]) {
-                    chart24['data']['labels'][k] = previousOrderedResultLabels24[i];
-                    chart24['data']['datasets'][0]['data'][k] = previousOrderedResultValues24[i];
-                    i++;
-                } else {
-                    chart24['data']['labels'][k] = orderedResultLabels24[j];
-                    chart24['data']['datasets'][0]['data'][k] = orderedResultValues24[j];
-                    j++;
-                    if (previousOrderedResultLabels24[i] === orderedResultLabels24[j]) {
-                        i++;
-                    }
-                }
-                k++;
-            }
-        }
+        chartDefinition['data']['labels'] = orderedResultLabels;
+        chartDefinition['data']['datasets'][0]['data'] = orderedResultValues;
+        chart24Definition['data']['labels'] = orderedResultLabels24;
+        chart24Definition['data']['datasets'][0]['data'] = orderedResultValues24;
         const ctx = document.getElementById('myChart');
         const ctx24 = document.getElementById('myChart24');
         if (myChart) {
@@ -723,15 +752,17 @@
             myChart24.clear();
             myChart24.destroy();
         }
-        myChart = new Chart(ctx, chart);
+        myChart = new Chart(ctx, chartDefinition);
         document.getElementById("downloadCSV").style.display = "block";
-        myChart24 = new Chart(ctx24, chart24);
+        myChart24 = new Chart(ctx24, chart24Definition);
         document.getElementById("downloadCSV24").style.display = "block";
+        error = '';
     }
 
     let files, reader, current_file, current_line = '', current_index = 0, filesCount = -1, completedCount = 0;
 
     function loadFile(file) {
+        console.log(`Processing ${file.name}...`);
         reader = new FileReader();
         current_file = file;
         reader.onload = makeTextFileLine;
@@ -739,43 +770,59 @@
     }
 
     function seek() {
-        if (current_index >= current_file.size) {
-            completedCount += 1;
-            console.log(`END: completed: ${completedCount} total: ${filesCount}`)
-            current_index = 0;
-            current_line = ''; // for good measure
-            if (completedCount === filesCount) {
-                onReaderFinish();
-            } else {
-                loadFile(files[completedCount])
+        try {
+            if (current_index >= current_file.size) {
+                completedCount += 1;
+                console.log(`END: completed: ${completedCount} total: ${filesCount}`)
+                current_index = 0;
+                current_line = ''; // for good measure
+                if (completedCount === filesCount) {
+                    onReaderFinish();
+                } else {
+                    loadFile(files[completedCount])
+                }
+                return;
             }
-            return;
+            let chunk_size = Math.min(32768, current_file.size - current_index);
+            // console.log(`LOOP: completed: ${completedCount} total: ${filesCount}`)
+            // console.log(`LOOP: index: ${current_index} size: ${current_file.size} chunk: ${chunk_size}`)
+            let slice = current_file.slice(current_index, current_index + chunk_size);
+            current_index += chunk_size
+            reader.readAsArrayBuffer(slice);
+        } catch (e) {
+            console.error(e);
+            if (!error) {
+                error = e.message;
+                alert(error);
+            }
         }
-        let chunk_size = Math.min(32768, current_file.size - current_index);
-        // console.log(`LOOP: completed: ${completedCount} total: ${filesCount}`)
-        // console.log(`LOOP: index: ${current_index} size: ${current_file.size} chunk: ${chunk_size}`)
-        let slice = current_file.slice(current_index, current_index + chunk_size);
-        current_index += chunk_size
-        reader.readAsArrayBuffer(slice);
     }
 
     function makeTextFileLine() {
-        let buffer = new Uint8Array(reader.result);
-        for (let i = 0; i < buffer.length; i++) {
-            if (buffer[i] === 10) {
-                current_line += new TextDecoder('utf-8').decode(buffer.slice(0, i + 1));
-                current_index = current_index - buffer.length + i + 1;
-                onReaderLoad();
-                return;
+        try {
+            let buffer = new Uint8Array(reader.result);
+            for (let i = 0; i < buffer.length; i++) {
+                if (buffer[i] === 10) {
+                    current_line += new TextDecoder('utf-8').decode(buffer.slice(0, i + 1));
+                    current_index = current_index - buffer.length + i + 1;
+                    onReaderLoad();
+                    return;
+                }
             }
-        }
-        current_line += new TextDecoder('utf-8').decode(buffer.slice(0, buffer.length));
-        if (current_index >= current_file.size) {
-            console.log(`FULL BUFFER ADDED AT END: ${current_line}`);
-            onReaderLoad();
-        } else {
-            console.warn(`FULL BUFFER ADDED: ${current_line}. CONSIDER INCREASING BUFFER SIZE SO IT FITS AT LEAST 1 LINE`);
-            seek();
+            current_line += new TextDecoder('utf-8').decode(buffer.slice(0, buffer.length));
+            if (current_index >= current_file.size) {
+                console.log(`File ${current_file.name} - FULL BUFFER ADDED AT END: ${current_line.length} characters`);
+                onReaderLoad();
+            } else {
+                console.warn(`File ${current_file.name} - FULL BUFFER ADDED: ${current_line.length} characters. CONSIDER INCREASING BUFFER SIZE SO IT FITS AT LEAST 1 LINE`);
+                seek();
+            }
+        } catch (e) {
+            console.error(e);
+            if (!error) {
+                error = e.message;
+                alert(error);
+            }
         }
     }
 
@@ -783,7 +830,7 @@
     document.getElementById("downloadCSV").addEventListener("click", function () {
         downloadCSV({
             filename: "chart-data.csv",
-            chart: chart
+            chart: chartDefinition
         })
     });
 
@@ -791,7 +838,7 @@
     document.getElementById("downloadCSV24").addEventListener("click", function () {
         downloadCSV({
             filename: "chart-data24.csv",
-            chart: chart24
+            chart: chart24Definition
         })
     });
 
@@ -822,9 +869,9 @@
     function downloadCSV(args) {
         let data, filename, link;
         let csv = "";
-        for (let i = 0; i < args.chart.data.datasets.length; i++) {
+        for (let dataset of args.chart.data.datasets) {
             csv += convertChartDataToCSV({
-                data: args.chart.data.datasets[i],
+                data: dataset,
                 labels: args.chart.data.labels
             });
         }

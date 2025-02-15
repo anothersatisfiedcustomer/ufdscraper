@@ -114,14 +114,19 @@ entre consultas de 2 a 4 segundos, lo cual significa que en media la ejecución 
 
 ### Lista de cambios
 
+#### 02/2025 v0.2.1 - alias _corrupción embebida_
+
+ - Arregla el orden de las entradas en [chart.html](chart.html) al cargar múltiples ficheros.
+ - Añade texto sobreimpreso a los gráficos indicando la suma de las medidas en el rango seleccionado.
+
 #### 01/2025 v0.2.0 - alias _corrupción en miami_
 
- - Añade script [influxdbloader.py](influxdbloader/influxdbloader.py) para ingerir la salida de
-[ufdscraper.py](ufdscraper/ufdscraper.py) en una base de datos InfluxDB.
+- Añade script [influxdbloader.py](influxdbloader/influxdbloader.py) para ingerir la salida de
+  [ufdscraper.py](ufdscraper/ufdscraper.py) en una base de datos InfluxDB.
 
- - Vuelca a JSON lines en lugar de JSON, para mejor escalabilidad tanto en la generación de la salida como en su
-ingesta. **ESTO ROMPE LA COMPATIBILIDAD HACIA ATRÁS CON ARCHIVOS GENERADOS POR LA VERSION ANTERIOR**. El script
-[2_to_3_output.py](2_to_3_output.py) permite convertir estos archivos a la nueva version.
+- Vuelca a JSON lines en lugar de JSON, para mejor escalabilidad tanto en la generación de la salida como en su
+  ingesta. **ESTO ROMPE LA COMPATIBILIDAD HACIA ATRÁS CON ARCHIVOS GENERADOS POR LA VERSION ANTERIOR**. El script
+  [2_to_3_output.py](2_to_3_output.py) permite convertir estos archivos a la nueva version.
 
 #### 12/2021 v0.1.0 - alias _corrupción escalable_
 
